@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LinkedIn Comment Assistant
 
 AI-powered comment generation for LinkedIn posts with customizable tones and prompts.
@@ -91,3 +92,6 @@ Using your own OpenAI API key:
 ## License
 
 MIT License - Free to use and modify!
+=======
+# Linkedin-Assistent
+>>>>>>> b16f7b0189853f2c11d20733b94e0c82c169b897
