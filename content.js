@@ -534,7 +534,7 @@
         const text = (textEl?.innerText || textEl?.textContent || '').replace(/\s+/g, ' ').trim();
         // Heuristic: avoid picking up UI labels like "Comment" / "reactions"
         if (text && text.length >= 30 && !/^(\d+\s+reactions?|comment|like|share)$/i.test(text)) {
-          content = text.substring(0, 1500); // Limit length
+          content = text; // Use full text without truncation
           break;
         }
       }
@@ -565,7 +565,7 @@
             .sort((a, b) => b.text.length - a.text.length);
 
           if (candidates[0]?.text) {
-            content = candidates[0].text.substring(0, 1500);
+            content = candidates[0].text; // Use full text without truncation
           }
         } catch (_) {
           // keep default
