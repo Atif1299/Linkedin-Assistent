@@ -160,12 +160,29 @@
   
   // Create and inject the assistant UI - INLINE version
   function createAssistantUI(commentBox) {
+    // Normalize: sometimes we’re handed the inner editor element, not the whole comment box.
+    // The injection logic expects a container that also includes the toolbar/actions area.
+    const normalizedBox =
+      // New LinkedIn TipTap comment composer wrapper
+      commentBox?.closest?.('[data-testid="ui-core-tiptap-text-editor-wrapper"]') ||
+      // Comment box root (recent builds often use a componentkey prefix)
+      commentBox?.closest?.('[componentkey^="commentBox-"]') ||
+      commentBox?.closest?.('.comments-comment-box') ||
+      commentBox?.closest?.('.comments-comment-texteditor') ||
+      commentBox?.closest?.('.comment-box') ||
+      commentBox;
+
     // Check if already injected anywhere in this comment box area
-    if (commentBox.querySelector('.lca-inline-btn') || 
-        commentBox.parentElement?.querySelector('.lca-inline-btn')) return;
+    if (
+      normalizedBox?.querySelector?.('.lca-inline-btn') ||
+      normalizedBox?.parentElement?.querySelector?.('.lca-inline-btn')
+    )
+      return;
     
     // Find the toolbar/actions area inside the comment box (where emoji and image buttons are)
     const toolbarSelectors = [
+      // Newer LinkedIn builds often render a bottom action row near the editor
+      '[data-testid*="text-editor"] button',
       '.comments-comment-box__controls',
       '.comments-comment-texteditor__toolbar',
       '.comment-box__actions',
@@ -176,17 +193,25 @@
     
     let toolbar = null;
     for (const selector of toolbarSelectors) {
-      toolbar = commentBox.querySelector(selector);
+      toolbar = normalizedBox?.querySelector?.(selector) || null;
+      if (!toolbar) toolbar = normalizedBox?.parentElement?.querySelector?.(selector) || null;
       if (toolbar) break;
     }
     
     // If no toolbar found, try to find emoji button and insert next to it
     if (!toolbar) {
-      const emojiBtn = commentBox.querySelector('[data-test-icon="emoji-small"]') ||
-                       commentBox.querySelector('[data-test-icon="smiley-face-small"]') ||
-                       commentBox.querySelector('button[class*="emoji"]') ||
-                       commentBox.querySelector('button svg') ||
-                       commentBox.querySelector('.comments-comment-box-comment__text-editor');
+      const emojiBtn =
+        normalizedBox?.querySelector?.('[data-test-icon="emoji-small"]') ||
+        normalizedBox?.querySelector?.('[data-test-icon="smiley-face-small"]') ||
+        normalizedBox?.querySelector?.('button[class*="emoji"]') ||
+        // New DOM: the "Post comment" / related controls often sit near the TipTap wrapper
+        normalizedBox?.querySelector?.('[data-testid*="text-editor"]')?.querySelector?.('button') ||
+        // Less specific fallback: any nearby button
+        normalizedBox?.querySelector?.('button') ||
+        normalizedBox?.parentElement?.querySelector?.('[data-test-icon="emoji-small"]') ||
+        normalizedBox?.parentElement?.querySelector?.('[data-test-icon="smiley-face-small"]') ||
+        normalizedBox?.parentElement?.querySelector?.('button[class*="emoji"]') ||
+        normalizedBox?.parentElement?.querySelector?.('button');
       if (emojiBtn) {
         toolbar = emojiBtn.parentElement;
       }
@@ -246,9 +271,20 @@
       }
     } else {
       // Fallback: Find the comment input wrapper and inject inside it
-      const inputWrapper = commentBox.querySelector('.comments-comment-box-comment__text-editor') ||
-                          commentBox.querySelector('[class*="text-editor"]') ||
-                          commentBox.querySelector('.ql-container');
+      const inputWrapper =
+        // New TipTap wrapper (matches your DOM snippet)
+        normalizedBox?.querySelector?.('[data-testid="ui-core-tiptap-text-editor-wrapper"]') ||
+        (normalizedBox?.matches?.('[data-testid="ui-core-tiptap-text-editor-wrapper"]') ? normalizedBox : null) ||
+        normalizedBox?.querySelector?.('.comments-comment-box-comment__text-editor') ||
+        // If normalizedBox *is* the editor, allow it directly
+        (normalizedBox?.matches?.('.comments-comment-box-comment__text-editor') ? normalizedBox : null) ||
+        normalizedBox?.querySelector?.('[class*="text-editor"]') ||
+        normalizedBox?.querySelector?.('.ql-container') ||
+        // New editor surface: TipTap/ProseMirror
+        normalizedBox?.querySelector?.('.tiptap.ProseMirror') ||
+        normalizedBox?.parentElement?.querySelector?.('.comments-comment-box-comment__text-editor') ||
+        normalizedBox?.parentElement?.querySelector?.('[class*="text-editor"]') ||
+        normalizedBox?.parentElement?.querySelector?.('.ql-container');
       if (inputWrapper) {
         // Insert at the end of the input wrapper, positioned inline
         const parent = inputWrapper.parentElement;
@@ -259,6 +295,16 @@
           if (actionsContainer) {
             actionsContainer.insertBefore(btnWrapper, actionsContainer.firstChild);
           } else {
+            // Final fallback for hashed/new DOM: anchor inside the editor wrapper
+            // so the button is visible even with no recognizable toolbar.
+            try {
+              const computed = window.getComputedStyle(parent);
+              if (computed.position === 'static') parent.style.position = 'relative';
+            } catch (_) {}
+            btnWrapper.style.position = 'absolute';
+            btnWrapper.style.right = '8px';
+            btnWrapper.style.bottom = '8px';
+            btnWrapper.style.zIndex = '9999';
             parent.appendChild(btnWrapper);
           }
         }
@@ -269,7 +315,7 @@
     }
     
     // Setup event listeners
-    setupEventListeners(btnWrapper, commentBox);
+    setupEventListeners(btnWrapper, normalizedBox);
   }
   
   function setupEventListeners(container, commentBox) {
@@ -280,20 +326,100 @@
     const errorText = container.querySelector('.lca-error-text');
     const errorClose = container.querySelector('.lca-error-close');
     const toneButtons = container.querySelectorAll('.lca-tone-btn');
+
+    function sendExtensionMessage(payload) {
+      const runtime =
+        globalThis?.chrome?.runtime ||
+        globalThis?.browser?.runtime ||
+        null;
+
+      const sendMessage = runtime?.sendMessage;
+      if (typeof sendMessage !== 'function') {
+        return Promise.reject(
+          new Error(
+            'Extension messaging unavailable. Reload the extension and refresh LinkedIn.'
+          )
+        );
+      }
+
+      // Use callback-style to work across Chrome MV3/MV2 variations.
+      return new Promise((resolve, reject) => {
+        try {
+          sendMessage.call(runtime, payload, (response) => {
+            const lastError = globalThis?.chrome?.runtime?.lastError;
+            if (lastError) return reject(new Error(lastError.message));
+            resolve(response);
+          });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    // In the new LinkedIn feed composer, ancestors often have overflow clipping.
+    // To ensure the dropdown is visible, we "portal" it to document.body and position it
+    // under the button using getBoundingClientRect().
+    const dropdownPortalState = {
+      isOpen: false,
+      isPortaled: false,
+      originalParent: null,
+      originalNextSibling: null
+    };
+
+    function positionDropdown() {
+      if (!dropdown) return;
+      const rect = generateBtn.getBoundingClientRect();
+      dropdown.style.position = 'fixed';
+      dropdown.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 220))}px`;
+      dropdown.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 20)}px`;
+      dropdown.style.zIndex = '2147483647';
+    }
+
+    function ensureDropdownPortaled() {
+      if (!dropdown || dropdownPortalState.isPortaled) return;
+      dropdownPortalState.originalParent = dropdown.parentElement;
+      dropdownPortalState.originalNextSibling = dropdown.nextSibling;
+      document.body.appendChild(dropdown);
+      dropdownPortalState.isPortaled = true;
+    }
+
+    function openDropdown() {
+      if (!dropdown) return;
+      ensureDropdownPortaled();
+      positionDropdown();
+      dropdown.style.display = 'block';
+      dropdownPortalState.isOpen = true;
+    }
+
+    function closeDropdown() {
+      if (!dropdown) return;
+      dropdown.style.display = 'none';
+      dropdownPortalState.isOpen = false;
+    }
     
     // Toggle dropdown
     generateBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+      if (!dropdownPortalState.isOpen) openDropdown();
+      else closeDropdown();
       error.style.display = 'none';
     });
     
     // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
-      if (!container.contains(e.target)) {
-        dropdown.style.display = 'none';
+      const target = e.target;
+      if (dropdownPortalState.isOpen) {
+        if (!container.contains(target) && !dropdown.contains(target)) closeDropdown();
       }
+    });
+
+    window.addEventListener('scroll', () => {
+      if (dropdownPortalState.isOpen) positionDropdown();
+    }, true);
+
+    window.addEventListener('resize', () => {
+      if (dropdownPortalState.isOpen) positionDropdown();
     });
     
     // Handle tone selection
@@ -303,7 +429,7 @@
         e.stopPropagation();
         const toneKey = btn.dataset.tone;
         
-        dropdown.style.display = 'none';
+        closeDropdown();
         loading.style.display = 'flex';
         error.style.display = 'none';
         generateBtn.style.display = 'none';
@@ -318,7 +444,7 @@
           if (replyContext.isReplyToReply) {
             // Use the reply-specific action
             console.log('LCA: Detected reply context', replyContext);
-            response = await chrome.runtime.sendMessage({
+            response = await sendExtensionMessage({
               action: "generateReply",
               toneKey: toneKey,
               postContent: postData.content,
@@ -329,7 +455,7 @@
             });
           } else {
             // Regular comment generation
-            response = await chrome.runtime.sendMessage({
+            response = await sendExtensionMessage({
               action: "generateComment",
               toneKey: toneKey,
               postContent: postData.content,
@@ -366,6 +492,11 @@
     let postContainer = container.closest('.feed-shared-update-v2') || 
                         container.closest('.occludable-update') ||
                         container.closest('[data-urn]') ||
+                        container.closest('[data-urn^="urn:li:activity:"]') ||
+                        container.closest('[data-urn^="urn:li:share:"]') ||
+                        container.closest('[role="article"]') ||
+                        // Matches what your Playwright scraper uses in main.py
+                        container.closest("div[role='listitem']") ||
                         container.closest('.scaffold-finite-scroll__content');
     
     // Try to find the actual post element if we're too high up
@@ -378,20 +509,66 @@
     let author = "the author";
     
     if (postContainer) {
-      // Extract post text - try multiple selectors
+      // Extract post text - try multiple selectors (LinkedIn changes DOM frequently).
+      // Prefer innerText to better match what user sees (handles hidden text / spacing better).
       const textSelectors = [
+        // Matches what your Playwright scraper uses in main.py (high-signal for feed posts)
+        'span[data-testid="expandable-text-box"]',
+        // Common/stable testids (newer builds)
+        '[data-testid*="commentary"]',
+        '[data-testid*="post-content"]',
+        '[data-testid*="feed-shared-update"] [data-testid*="commentary"]',
+        // Legacy selectors
         '.feed-shared-update-v2__description',
         '.feed-shared-text',
         '.update-components-text',
         '[data-test-id="main-feed-activity-card__commentary"]',
-        '.break-words'
+        '.break-words',
+        // Generic fallbacks for text blocks
+        'span[dir="ltr"]',
+        'div[dir="auto"]'
       ];
       
       for (const selector of textSelectors) {
         const textEl = postContainer.querySelector(selector);
-        if (textEl && textEl.textContent.trim()) {
-          content = textEl.textContent.trim().substring(0, 1500); // Limit length
+        const text = (textEl?.innerText || textEl?.textContent || '').replace(/\s+/g, ' ').trim();
+        // Heuristic: avoid picking up UI labels like "Comment" / "reactions"
+        if (text && text.length >= 30 && !/^(\d+\s+reactions?|comment|like|share)$/i.test(text)) {
+          content = text.substring(0, 1500); // Limit length
           break;
+        }
+      }
+
+      // If selectors failed (new hashed DOM), try a best-effort text extraction from the post container.
+      if (content === "Unable to extract post content") {
+        try {
+          // Try to find a "main text" region near the top of the post container:
+          // pick the longest visible text block that isn't clearly a button/label.
+          const candidates = Array.from(
+            postContainer.querySelectorAll('span, div, p')
+          )
+            .filter(el => {
+              const role = el.getAttribute('role') || '';
+              if (role === 'button' || role === 'img') return false;
+              const tag = el.tagName.toLowerCase();
+              if (tag === 'button') return false;
+              const ariaHidden = el.getAttribute('aria-hidden');
+              if (ariaHidden === 'true') return false;
+              return true;
+            })
+            .map(el => ({
+              el,
+              text: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim()
+            }))
+            .filter(x => x.text.length >= 40)
+            .filter(x => !/^(comment|like|share|repost|send)$/i.test(x.text))
+            .sort((a, b) => b.text.length - a.text.length);
+
+          if (candidates[0]?.text) {
+            content = candidates[0].text.substring(0, 1500);
+          }
+        } catch (_) {
+          // keep default
         }
       }
       
@@ -400,21 +577,91 @@
         '.update-components-actor__name',
         '.feed-shared-actor__name',
         '.update-components-actor__title',
-        '[data-test-id="main-feed-activity-card__entity-lockup"] span[dir="ltr"]'
+        '[data-test-id="main-feed-activity-card__entity-lockup"] span[dir="ltr"]',
+        // Newer builds: actor name often rendered as a link with dir=ltr
+        'a[aria-label][href*="/in/"] span[dir="ltr"]',
+        'a[href*="/in/"] span[dir="ltr"]'
       ];
       
       for (const selector of authorSelectors) {
         const authorEl = postContainer.querySelector(selector);
-        if (authorEl && authorEl.textContent.trim()) {
-          author = authorEl.textContent.trim().split('\n')[0].trim();
+        const name = (authorEl?.innerText || authorEl?.textContent || '').replace(/\s+/g, ' ').trim();
+        if (name) {
+          author = name.split('\n')[0].trim();
           break;
         }
       }
     }
+
+    // Debug to quickly see what we’re sending to OpenAI
+    try {
+      console.log('LCA: extractPostContent', {
+        author,
+        contentPreview: (content || '').substring(0, 120),
+        contentLength: (content || '').length
+      });
+    } catch (_) {}
     
     return { content, author };
   }
   
+  function showExtractToast(text) {
+    try {
+      const existing = document.getElementById('lca-extract-toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.id = 'lca-extract-toast';
+      toast.style.cssText =
+        'position:fixed;bottom:16px;right:16px;z-index:2147483647;' +
+        'max-width:420px;max-height:240px;overflow:auto;' +
+        'background:#111827;color:#fff;padding:12px 14px;border-radius:10px;' +
+        'box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12px;line-height:1.35;' +
+        'white-space:pre-wrap;';
+      toast.textContent = text || '(empty)';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 6000);
+    } catch (_) {}
+  }
+
+  function injectTestExtractor() {
+    // Put a "Test Extract" button next to the feed's Comment action.
+    // This avoids relying on hashed classnames and anchors to svg#comment-small from your DOM snippet.
+    const commentIcons = document.querySelectorAll('svg#comment-small');
+    commentIcons.forEach(icon => {
+      const btn = icon.closest('button');
+      if (!btn) return;
+
+      // Anchor in the same action bar container that holds the comment button.
+      const actionBar = btn.parentElement;
+      if (!actionBar) return;
+
+      if (actionBar.querySelector('.lca-test-extract-btn')) return;
+
+      const testBtn = document.createElement('button');
+      testBtn.type = 'button';
+      testBtn.className = 'lca-test-extract-btn';
+      testBtn.textContent = 'Test Extract';
+      testBtn.style.cssText =
+        'margin-left:8px;padding:4px 10px;border-radius:14px;border:1px solid rgba(0,0,0,.18);' +
+        'background:linear-gradient(135deg,#0a66c2 0%,#004182 100%);color:#fff;font-weight:600;font-size:12px;cursor:pointer;height:28px;';
+
+      testBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const post = actionBar.closest('[role="article"]') || actionBar.closest("div[role='listitem']") || actionBar.closest('[data-urn]');
+        const data = extractPostContent(post || actionBar);
+        console.log('LCA: TEST EXTRACT', data);
+        showExtractToast(
+          `Author: ${data.author}\n\nExtracted text (${(data.content || '').length} chars):\n${data.content}`
+        );
+      });
+
+      actionBar.appendChild(testBtn);
+    });
+  }
+
   function insertComment(commentBox, comment) {
     // LinkedIn uses contenteditable divs or input fields
     const editableDiv = commentBox.querySelector('[contenteditable="true"]') ||
@@ -461,14 +708,32 @@
       '[data-test-id="comments-comment-box"]',
       '.comments-comment-texteditor',
       '.feed-shared-update-v2__comments-container .comment-box',
-      '.comments-comment-box-comment__text-editor'
+      '.comments-comment-box-comment__text-editor',
+      // New feed comment composer (TipTap)
+      '[data-testid="ui-core-tiptap-text-editor-wrapper"]',
+      // New editor surface (TipTap/ProseMirror)
+      '[contenteditable="true"][role="textbox"][aria-label*="Text editor for creating comment"]',
+      '.tiptap.ProseMirror',
+      // Some builds provide a stable componentkey
+      '[componentkey^="commentBox-"]'
     ];
     
     commentBoxSelectors.forEach(selector => {
       document.querySelectorAll(selector).forEach(box => {
-        createAssistantUI(box);
+        // Normalize nested editor elements up to their actual comment box container.
+        const normalized =
+          box.closest('[componentkey^="commentBox-"]') ||
+          box.closest('[data-testid="ui-core-tiptap-text-editor-wrapper"]') ||
+          box.closest('.comments-comment-box') ||
+          box.closest('.comments-comment-texteditor') ||
+          box.closest('.comment-box') ||
+          box;
+        createAssistantUI(normalized);
       });
     });
+
+    // Debug helper for new DOM extraction validation
+    injectTestExtractor();
   }
   
   // Observe DOM changes for dynamically loaded content
