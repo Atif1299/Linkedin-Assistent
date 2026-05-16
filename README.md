@@ -21,7 +21,7 @@
 
 [Quick start](#quick-start) · [Capabilities](#capabilities) · [Install](#install) · [Tones](#tones) · [Layout](#layout) · [Privacy](#privacy)
 
-</motion>
+</div>
 
 ---
 
