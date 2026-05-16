@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="200" viewBox="0 0 920 200" role="img" aria-label="LinkedIn Comment Assistant">
+  <defs>
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="55%" stop-color="#0a66c2"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+  </defs>
+  <rect width="920" height="200" rx="18" fill="#0d1117"/>
+  <text x="460" y="78" text-anchor="middle" font-family="Segoe UI, system-ui, -apple-system, sans-serif" font-size="40" font-weight="700" letter-spacing="2" fill="url(#titleGrad)">LINKEDIN COMMENT ASSISTANT</text>
+  <text x="460" y="118" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="600" letter-spacing="3" fill="#e6edf3">COMMENTS &#9670; REPLIES &#9670; TONES</text>
+  <text x="460" y="148" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#8b949e">Chrome extension &#9670; OpenAI GPT-4o-mini &#9670; 8 writing styles</text>
+</svg>
