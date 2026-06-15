@@ -88,8 +88,10 @@ async function handleGenerateComment({ toneKey, postContent, authorName }) {
 
 CRITICAL - YOU MUST FOLLOW THESE RULES:
 1. Write ONLY 1 short sentence (15 words max)
-2. DO NOT compliment or praise the author AT ALL
-3. DO NOT use ANY of these patterns:
+2. DO NOT mention the author in this comment - their mention will be added automatically
+3. DO NOT compliment or praise the author AT ALL
+4. DO NOT use ANY dash characters in comments, including "-" or "–"
+5. DO NOT use ANY of these patterns:
    - "Your [noun] on/about X..."
    - "Your emphasis on..."
    - "You've captured..."
@@ -97,23 +99,26 @@ CRITICAL - YOU MUST FOLLOW THESE RULES:
    - "This resonates..."
    - "Powerful reminder..."
    - "Spot on..."
-   - "Game-changer..."
+   - "Game changer..."
    - "Looking forward..."
-4. INSTEAD: Share a quick thought, personal take, or add a related idea
-5. Sound like a real person dropping a quick comment, not an AI generating praise`;
+6. INSTEAD: Share a quick thought, personal take, question, observation, or add a related idea
+7. Sound like a real person dropping a quick comment, not an AI generating praise
+8. Keep it conversational, natural, and human
+9. Never start with generic praise or agreement
+10. Do not repeat the author's main point word for word
+11. Output only the comment text with no quotes, emojis, hashtags, or extra formatting`;
+
   const customPrompts = storage.customPrompts || {};
   
   if (customPrompts[toneKey] && customPrompts[toneKey].trim()) {
     systemPrompt += `\n\nUser's personal style: ${customPrompts[toneKey].trim()}`;
   }
   
-  const authorFirstName = authorName.split(' ')[0];
-  const userPrompt = `Post topic: "${postContent.substring(0, 300)}"
+  const userPrompt = `Post topic: "${postContent}"
 
 Write 1 short reaction (15 words max) that ADDS something to the conversation. 
-Start with "${authorFirstName}," then share YOUR take, a related thought, or build on their idea.
-DO NOT praise them. DO NOT say "your X is Y". Just add value.`;
-
+Share YOUR take, a related thought, or build on their idea.
+DO NOT mention the author, DO NOT praise them. DO NOT say "your X is Y". Just add value.`;
 
   // Call OpenAI API
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -123,7 +128,7 @@ DO NOT praise them. DO NOT say "your X is Y". Just add value.`;
       "Authorization": `Bearer ${storage.openaiApiKey}`
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-nano",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
@@ -145,10 +150,16 @@ DO NOT praise them. DO NOT say "your X is Y". Just add value.`;
   }
   
   const data = await response.json();
-  const comment = data.choices[0]?.message?.content?.trim();
+  let comment = data.choices[0]?.message?.content?.trim();
   
   if (!comment) {
     throw new Error("No comment generated. Please try again.");
+  }
+  
+  // Remove any leading author name if the model still added it
+  const authorFirstName = authorName.split(' ')[0];
+  if (comment.toLowerCase().startsWith(authorFirstName.toLowerCase())) {
+    comment = comment.substring(authorFirstName.length).replace(/^[,\s]+/, '');
   }
   
   return { comment };
@@ -215,7 +226,7 @@ Write ONE short reply (10-15 words max) to ${replierFirstName}. Be direct and co
       "Authorization": `Bearer ${storage.openaiApiKey}`
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-nano",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }

@@ -92,8 +92,6 @@
         });
       }
       
-      console.log('LCA: Found comments in thread:', foundComments.map(c => ({ name: c.name, preview: c.text?.substring(0, 50) })));
-      
       // Assign based on what we found
       if (foundComments.length >= 2) {
         // Last one is likely the reply we're responding to
@@ -108,12 +106,94 @@
       }
       
     } catch (err) {
-      console.log('LCA: Error detecting reply context:', err);
     }
     
     return context;
   }
   
+  // Extract author name from post container
+  function extractAuthorName(postElement) {
+    if (!postElement) {
+      return "the author";
+    }
+    
+    let authorName = "the author";
+    
+    // First try to find all links that have /in/ in href
+    const profileLinks = postElement.querySelectorAll('a[href*="/in/"]');
+    
+    for (let i = 0; i < profileLinks.length; i++) {
+      const profileLink = profileLinks[i];
+      
+      // Try to get all text content from the link
+      const linkText = (profileLink.innerText || profileLink.textContent || '').replace(/\s+/g, ' ').trim();
+      
+      // Clean up link text by removing common LinkedIn phrases
+      let cleanedLinkText = linkText
+        .replace(/premium profile/i, '')
+        .replace(/following/i, '')
+        .replace(/view profile/i, '')
+        .replace(/^view/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      if (cleanedLinkText && cleanedLinkText.length >= 2) {
+        authorName = cleanedLinkText;
+        return authorName;
+      }
+      
+      // Also try aria-label
+      const ariaLabel = profileLink.getAttribute('aria-label');
+      if (ariaLabel) {
+        let cleanedAriaLabel = ariaLabel
+          .replace(/premium profile/i, '')
+          .replace(/following/i, '')
+          .replace(/view profile/i, '')
+          .replace(/^view/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        if (cleanedAriaLabel && cleanedAriaLabel.length >= 2) {
+          authorName = cleanedAriaLabel;
+          return authorName;
+        }
+      }
+      
+      // Look for any span or p inside or near the link
+      const nameElements = profileLink.querySelectorAll('span, p');
+      for (const el of nameElements) {
+        const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text && text.length >= 2 && !/^(premium|following|view|profile|connection)$/i.test(text)) {
+          authorName = text.split('\n')[0].trim();
+          return authorName;
+        }
+      }
+    }
+    
+    // If profile link not found, try existing selectors as fallback
+    const authorSelectors = [
+      '.update-components-actor__name',
+      '.feed-shared-actor__name',
+      '.update-components-actor__title',
+      '[data-test-id="main-feed-activity-card__entity-lockup"] span[dir="ltr"]',
+      'a[aria-label][href*="/in/"] span[dir="ltr"]',
+      'a[href*="/in/"] span[dir="ltr"]'
+    ];
+    
+    for (const selector of authorSelectors) {
+      const authorEl = postElement.querySelector(selector);
+      if (authorEl) {
+        const name = (authorEl?.innerText || authorEl?.textContent || '').replace(/\s+/g, ' ').trim();
+        if (name) {
+          authorName = name.split('\n')[0].trim();
+          break;
+        }
+      }
+    }
+    
+    return authorName;
+  }
+
   // Extract clean text from a comment element
   function extractTextFromElement(element) {
     if (!element) return null;
@@ -342,12 +422,13 @@
         );
       }
 
-      // Use callback-style to work across Chrome MV3/MV2 variations.
       return new Promise((resolve, reject) => {
         try {
           sendMessage.call(runtime, payload, (response) => {
             const lastError = globalThis?.chrome?.runtime?.lastError;
-            if (lastError) return reject(new Error(lastError.message));
+            if (lastError) {
+              return reject(new Error(lastError.message));
+            }
             resolve(response);
           });
         } catch (err) {
@@ -435,7 +516,7 @@
         generateBtn.style.display = 'none';
         
         try {
-          const postData = extractPostContent(container);
+          const postData = await extractPostContent(container);
           
           // Check if we're in a reply-to-reply context
           const replyContext = detectReplyContext(commentBox);
@@ -443,7 +524,6 @@
           let response;
           if (replyContext.isReplyToReply) {
             // Use the reply-specific action
-            console.log('LCA: Detected reply context', replyContext);
             response = await sendExtensionMessage({
               action: "generateReply",
               toneKey: toneKey,
@@ -467,7 +547,7 @@
             throw new Error(response.error);
           }
           
-          insertComment(commentBox, response.comment);
+          await insertComment(commentBox, response.comment, postData.author);
           
         } catch (err) {
           errorText.textContent = err.message;
@@ -487,14 +567,16 @@
     });
   }
   
-  function extractPostContent(container) {
-    // Find the post container
+  async function extractPostContent(container) {
+    // Find the post container - add more selectors
     let postContainer = container.closest('.feed-shared-update-v2') || 
                         container.closest('.occludable-update') ||
                         container.closest('[data-urn]') ||
                         container.closest('[data-urn^="urn:li:activity:"]') ||
                         container.closest('[data-urn^="urn:li:share:"]') ||
                         container.closest('[role="article"]') ||
+                        container.closest('[data-testid*="feed-update"]') ||
+                        container.closest('[data-testid*="post"]') ||
                         // Matches what your Playwright scraper uses in main.py
                         container.closest("div[role='listitem']") ||
                         container.closest('.scaffold-finite-scroll__content');
@@ -502,15 +584,49 @@
     // Try to find the actual post element if we're too high up
     if (!postContainer || postContainer.classList.contains('scaffold-finite-scroll__content')) {
       postContainer = container.closest('.feed-shared-update-v2__description-wrapper')?.closest('.feed-shared-update-v2') ||
-                      container.parentElement?.closest('.feed-shared-update-v2');
+                      container.parentElement?.closest('.feed-shared-update-v2') ||
+                      container.closest('[data-testid*="feed-update"]') ||
+                      container.closest('[data-testid*="post"]');
     }
     
     let content = "Unable to extract post content";
     let author = "the author";
     
     if (postContainer) {
-      // Extract post text - try multiple selectors (LinkedIn changes DOM frequently).
-      // Prefer innerText to better match what user sees (handles hidden text / spacing better).
+      // First, try to click "see more" if it exists to expand the post (try multiple selectors!)
+      const seeMoreBtnSelectors = [
+        'button.see-more', 
+        '[data-testid*="see-more"]',
+        'button:has-text("see more")',
+        'button:has-text("See more")',
+        'button:has-text("...see more")'
+      ];
+      
+      for (const sel of seeMoreBtnSelectors) {
+        let btn;
+        try {
+          btn = postContainer.querySelector(sel);
+        } catch (e) {
+          // has-text is css-in-js, might not work, skip
+        }
+        if (!btn) {
+          // Try a more brute force approach to find any button with "see more" text
+          const buttons = postContainer.querySelectorAll('button');
+          for (const b of buttons) {
+            if ((b.textContent || b.innerText || '').toLowerCase().includes('see more')) {
+              btn = b;
+              break;
+            }
+          }
+        }
+        if (btn) {
+          btn.click();
+          await new Promise(r => setTimeout(r, 500)); // Wait longer for expand
+          break;
+        }
+      }
+      
+      // Extract post text - try multiple selectors and pick the longest valid one
       const textSelectors = [
         // Matches what your Playwright scraper uses in main.py (high-signal for feed posts)
         'span[data-testid="expandable-text-box"]',
@@ -526,24 +642,31 @@
         '.break-words',
         // Generic fallbacks for text blocks
         'span[dir="ltr"]',
-        'div[dir="auto"]'
+        'div[dir="auto"]',
+        // Last resort: look for any element that might contain the main post text
+        'div[class*="text"], span[class*="text"], p[class*="text"]'
       ];
       
+      let longestText = '';
       for (const selector of textSelectors) {
         const textEl = postContainer.querySelector(selector);
-        const text = (textEl?.innerText || textEl?.textContent || '').replace(/\s+/g, ' ').trim();
-        // Heuristic: avoid picking up UI labels like "Comment" / "reactions"
+        // Use textContent first to avoid innerText truncation issues!
+        let text = (textEl?.textContent || textEl?.innerText || '').trim();
+        // Replace line breaks and multiple spaces with single spaces
+        text = text.replace(/\s+/g, ' ');
         if (text && text.length >= 30 && !/^(\d+\s+reactions?|comment|like|share)$/i.test(text)) {
-          content = text; // Use full text without truncation
-          break;
+          if (text.length > longestText.length) {
+            longestText = text;
+          }
         }
       }
+      
+      if (longestText.length > 0) {
+        content = longestText;
+      }
 
-      // If selectors failed (new hashed DOM), try a best-effort text extraction from the post container.
       if (content === "Unable to extract post content") {
         try {
-          // Try to find a "main text" region near the top of the post container:
-          // pick the longest visible text block that isn't clearly a button/label.
           const candidates = Array.from(
             postContainer.querySelectorAll('span, div, p')
           )
@@ -565,42 +688,14 @@
             .sort((a, b) => b.text.length - a.text.length);
 
           if (candidates[0]?.text) {
-            content = candidates[0].text; // Use full text without truncation
+            content = candidates[0].text;
           }
-        } catch (_) {
-          // keep default
-        }
+        } catch (_) {}
       }
       
-      // Extract author name
-      const authorSelectors = [
-        '.update-components-actor__name',
-        '.feed-shared-actor__name',
-        '.update-components-actor__title',
-        '[data-test-id="main-feed-activity-card__entity-lockup"] span[dir="ltr"]',
-        // Newer builds: actor name often rendered as a link with dir=ltr
-        'a[aria-label][href*="/in/"] span[dir="ltr"]',
-        'a[href*="/in/"] span[dir="ltr"]'
-      ];
-      
-      for (const selector of authorSelectors) {
-        const authorEl = postContainer.querySelector(selector);
-        const name = (authorEl?.innerText || authorEl?.textContent || '').replace(/\s+/g, ' ').trim();
-        if (name) {
-          author = name.split('\n')[0].trim();
-          break;
-        }
-      }
+      // Extract author name using helper function
+      author = extractAuthorName(postContainer);
     }
-
-    // Debug to quickly see what we’re sending to OpenAI
-    try {
-      console.log('LCA: extractPostContent', {
-        author,
-        contentPreview: (content || '').substring(0, 120),
-        contentLength: (content || '').length
-      });
-    } catch (_) {}
     
     return { content, author };
   }
@@ -646,13 +741,12 @@
         'margin-left:8px;padding:4px 10px;border-radius:14px;border:1px solid rgba(0,0,0,.18);' +
         'background:linear-gradient(135deg,#0a66c2 0%,#004182 100%);color:#fff;font-weight:600;font-size:12px;cursor:pointer;height:28px;';
 
-      testBtn.addEventListener('click', (e) => {
+      testBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
 
         const post = actionBar.closest('[role="article"]') || actionBar.closest("div[role='listitem']") || actionBar.closest('[data-urn]');
-        const data = extractPostContent(post || actionBar);
-        console.log('LCA: TEST EXTRACT', data);
+        const data = await extractPostContent(post || actionBar);
         showExtractToast(
           `Author: ${data.author}\n\nExtracted text (${(data.content || '').length} chars):\n${data.content}`
         );
@@ -662,7 +756,111 @@
     });
   }
 
-  function insertComment(commentBox, comment) {
+  // Helper function to simulate typing into contenteditable more reliably
+  function typeText(element, text) {
+    element.focus();
+    
+    // Use execCommand because it works well with LinkedIn's editor
+    document.execCommand('insertText', false, text);
+    
+    // Trigger input event
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // Helper function to wait for an element to appear
+  function waitForMentionDropdown(timeout = 3000) {
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      
+      const check = () => {
+        // Look for any possible mention dropdown selectors
+        const dropdown = 
+          document.querySelector('[role="listbox"][aria-label*="Mention suggestions"]') ||
+          document.querySelector('[role="listbox"][data-testid*="mention"]') ||
+          document.querySelector('[role="listbox"]') ||
+          document.querySelector('[data-testid="typeahead-results-container"]') ||
+          document.querySelector('[aria-label*="Mention suggestions"]');
+        
+        if (dropdown) {
+          resolve(dropdown);
+          return;
+        }
+        
+        if (Date.now() - startTime < timeout) {
+          setTimeout(check, 100);
+        } else {
+          resolve(null);
+        }
+      };
+      
+      check();
+    });
+  }
+
+  // Helper function to insert a real LinkedIn mention
+  async function insertLinkedInMention(editableDiv, authorName) {
+    if (!authorName || authorName === "the author") {
+      return false;
+    }
+    
+    try {
+      // Clear the field and prepare
+      editableDiv.focus();
+      editableDiv.innerHTML = '';
+      
+      // Type '@' character
+      typeText(editableDiv, '@');
+      await new Promise(r => setTimeout(r, 400));
+      
+      // Type the author's first name for better matching (LinkedIn often matches on first name)
+      const firstName = authorName.split(' ')[0];
+      typeText(editableDiv, firstName);
+      await new Promise(r => setTimeout(r, 700));
+      
+      // Wait for mention dropdown
+      const mentionDropdown = await waitForMentionDropdown();
+      
+      if (mentionDropdown) {
+        // Find first option with role="option"
+        let firstOption = mentionDropdown.querySelector('[role="option"]');
+        if (!firstOption) {
+          // Fallback: find any clickable element inside dropdown
+          firstOption = mentionDropdown.querySelector('div, li, button')?.closest('[role="option"]') || 
+                        mentionDropdown.querySelector('div, li, button');
+        }
+        
+        if (firstOption) {
+          // Try to click the option
+          firstOption.click();
+          
+          // Also try simulating Enter press as backup
+          const enterEvent = new KeyboardEvent('keydown', { 
+            bubbles: true, 
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13
+          });
+          editableDiv.dispatchEvent(enterEvent);
+          
+          await new Promise(r => setTimeout(r, 400));
+          
+          // Type a space to separate mention from comment
+          typeText(editableDiv, ' ');
+          
+          return true;
+        }
+      }
+    } catch (err) {
+    }
+    
+    // Fallback: just insert the author name as plain text @mention
+    editableDiv.innerHTML = '';
+    typeText(editableDiv, `@${authorName} `);
+    return false;
+  }
+
+  async function insertComment(commentBox, comment, authorName) {
     // LinkedIn uses contenteditable divs or input fields
     const editableDiv = commentBox.querySelector('[contenteditable="true"]') ||
                         commentBox.querySelector('.ql-editor') ||
@@ -671,29 +869,30 @@
     if (editableDiv) {
       // For contenteditable
       editableDiv.focus();
-      editableDiv.innerHTML = '';
       
-      // Create a text node and paragraph
-      const p = document.createElement('p');
-      p.textContent = comment;
-      editableDiv.appendChild(p);
+      if (authorName && authorName !== "the author") {
+        // Try to insert a real mention first
+        await insertLinkedInMention(editableDiv, authorName);
+      } else {
+        // No author name, just clear the editor
+        editableDiv.innerHTML = '';
+      }
+      
+      // Then type the rest of the comment
+      typeText(editableDiv, comment);
       
       // Trigger input event to notify LinkedIn
       editableDiv.dispatchEvent(new Event('input', { bubbles: true }));
       editableDiv.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      // Place cursor at end
-      const range = document.createRange();
-      const sel = window.getSelection();
-      range.selectNodeContents(editableDiv);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
     } else {
       // Fallback: try to find any input/textarea
       const input = commentBox.querySelector('input, textarea');
       if (input) {
-        input.value = comment;
+        if (authorName && authorName !== "the author") {
+          input.value = `@${authorName} ${comment}`;
+        } else {
+          input.value = comment;
+        }
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
@@ -768,6 +967,4 @@
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(findCommentBoxes, 300);
   });
-  
-  console.log('LinkedIn Comment Assistant loaded');
 })();
