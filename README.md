@@ -1,97 +1,137 @@
-<<<<<<< HEAD
-# LinkedIn Comment Assistant
+<div align="center">
 
-AI-powered comment generation for LinkedIn posts with customizable tones and prompts.
+<img src="assets/header.svg" alt="LinkedIn Comment Assistant" width="100%" />
 
-## Features
+<br/>
 
-- 🤖 **AI-Powered Comments** - Generate contextual comments using OpenAI GPT
-- 🎨 **8 Tone Options** - Professional, Casual, CEO, Thought Leader, and more
-- ✏️ **Custom Prompts** - Add your own instructions per tone for personalized comments
-- 🔒 **Privacy First** - API key stored locally, never leaves your browser
-- 🌓 **Dark Mode Support** - Matches LinkedIn's dark theme automatically
+![Chrome](https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white)
+![Manifest V3](https://img.shields.io/badge/Manifest-V3-34A853?logo=googlechrome&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?logo=javascript&logoColor=black)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?logo=openai&logoColor=white)
+![LinkedIn](https://img.shields.io/badge/LinkedIn-Feed%20%26%20Threads-0A66C2?logo=linkedin&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-3178c6)
 
-## Installation
+<br/>
 
-1. Download or clone this folder
-2. Open Chrome and go to `chrome://extensions`
-3. Enable **Developer mode** (toggle in top right)
+**Browse LinkedIn. Pick a tone. Get a short comment or reply — inserted right in the composer.**
+
+[Quick start](#quick-start) · [Capabilities](#capabilities) · [Install](#install) · [Tones](#tones) · [Layout](#layout) · [Privacy](#privacy)
+
+</div>
+
+---
+
+## What is LinkedIn Comment Assistant?
+
+**LinkedIn Comment Assistant** is a **Chrome extension** that adds an **AI Comment** or **AI Reply** button inside LinkedIn’s comment box. It reads the **post** (and **thread context** when you reply), generates a **one-sentence** response in your chosen **tone**, and **inserts it** into the editor — you review and post.
+
+No subscription. **Your OpenAI API key** stays in the browser. **No backend** — only your machine talks to OpenAI.
+
+---
+
+## Quick start
+
+1. **Load** the extension from the `Linkedin-Assistent` folder → [Install](#install)
+2. **Open** the extension popup → paste your **OpenAI API key** → **Save Settings**
+3. Go to **[LinkedIn](https://www.linkedin.com)** → open a post → **Comment** or **Reply**
+4. Click **AI Comment** or **AI Reply** → choose a **tone** → edit if needed → post
+
+**Optional:** Popup → **Custom Prompts** → add per-tone instructions → **Save Custom Prompts**
+
+---
+
+## Capabilities
+
+**Feed comments** — Extracts post text and author; generates a short, contextual comment.
+
+**Thread replies** — Detects reply context; the button becomes **AI Reply** aimed at that person.
+
+**Eight tones** — Professional, Casual, Supportive, Thought Leader, CEO / Executive, Curious / Question, Agree & Amplify, Respectful Disagree.
+
+**Custom style** — Per-tone instructions merged into prompts from the popup.
+
+**Inline on LinkedIn** — Button in the comment toolbar; supports TipTap / ProseMirror and legacy composers.
+
+**Short by design** — About one sentence (~10–15 words), tuned to avoid generic AI praise.
+
+**Privacy** — API key in `chrome.storage.local`; requests go only to `api.openai.com`.
+
+---
+
+## Install
+
+1. Clone or download this repository
+2. Open **`chrome://extensions`** in Chrome
+3. Enable **Developer mode**
 4. Click **Load unpacked**
-5. Select the `linkedin-comment-assistant` folder
-6. Done! You'll see the extension icon in your toolbar
+5. Select the **`Linkedin-Assistent`** folder (contains `manifest.json`)
 
-## Setup
+**Requirements:** Chrome or Chromium · [OpenAI API key](https://platform.openai.com/api-keys) · logged-in LinkedIn session
 
-1. Click the extension icon in your Chrome toolbar
-2. Enter your OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
-3. Click **Save Settings**
+---
 
-## Custom Prompts (Optional)
+## Tones
 
-Want more personalized comments? Add custom instructions per tone:
+| Tone | | Use when |
+|------|:-:|----------|
+| Professional | 💼 | Business-appropriate, polished |
+| Casual | 😊 | Friendly, conversational |
+| Supportive | 🙌 | Celebrating wins |
+| Thought Leader | 🧠 | Insights and perspective |
+| CEO / Executive | 👔 | Leadership angle |
+| Curious / Question | ❓ | Thoughtful questions |
+| Agree & Amplify | ✅ | Reinforce and add your take |
+| Respectful Disagree | 🤔 | Polite alternative view |
 
-1. Click the extension icon
-2. Go to the **Custom Prompts** tab
-3. Add your specific instructions for each tone
-4. Click **Save Custom Prompts**
+---
 
-### Example Custom Prompts
+## Layout
 
-| Tone | Custom Prompt Example |
-|------|----------------------|
-| Professional | "Always mention my 15 years in software development" |
-| CEO | "Reference leadership lessons and team building" |
-| Thought Leader | "Connect topics to AI and emerging tech trends" |
+```
+Linkedin-Assistent/
+├── manifest.json       # MV3 manifest
+├── background.js       # OpenAI API, tones, storage
+├── content.js          # DOM injection, extraction, UI
+├── content.css         # Button, dropdown, dark mode
+├── assets/header.svg   # README banner
+├── popup/              # Settings + custom prompts
+├── utils/prompts.js    # Default tone definitions
+└── icons/              # 16 · 48 · 128
+```
 
-## Usage
+| Component | Role |
+|-----------|------|
+| Content script | Finds composers, injects UI, extracts post/reply context |
+| Service worker | Builds prompts, calls OpenAI, returns text |
+| Popup | Saves API key and custom prompts |
 
-1. Go to [LinkedIn](https://www.linkedin.com)
-2. Find any post in your feed
-3. Click the **AI Comment** button below the comment box
-4. Select your preferred tone
-5. The generated comment will be inserted automatically
-
-## Tones Available
-
-| Tone | Best For |
-|------|----------|
-| 💼 Professional | Business discussions, networking |
-| 😊 Casual | Friendly engagement, casual posts |
-| 🙌 Supportive | Congratulating achievements |
-| 🧠 Thought Leader | Adding insights and perspectives |
-| 👔 CEO / Executive | Leadership viewpoint |
-| ❓ Curious / Question | Engaging with questions |
-| ✅ Agree & Amplify | Reinforcing the post's message |
-| 🤔 Respectful Disagree | Offering alternative views politely |
-
-## Cost
-
-Using your own OpenAI API key:
-- ~$0.01-0.03 per comment (GPT-4o-mini)
-- Much cheaper than subscription services!
-
-## Troubleshooting
-
-**"Please set your OpenAI API key"**
-- Click extension icon → Enter your API key → Save
-
-**"Invalid API key"**
-- Make sure your key starts with `sk-`
-- Check if your OpenAI account has credits
-
-**Button not appearing**
-- Refresh the LinkedIn page
-- Make sure the extension is enabled
+---
 
 ## Privacy
 
-- Your API key is stored only in your browser (Chrome local storage)
-- Post content is sent directly to OpenAI's API (not to any third party)
-- No analytics or tracking
+Your **API key** and **custom prompts** stay in browser local storage. Post and comment text used for generation is sent only to **OpenAI’s API** from your extension — not to a third-party server. No analytics backend in this project.
 
-## License
+---
 
-MIT License - Free to use and modify!
-=======
-# Linkedin-Assistent
->>>>>>> b16f7b0189853f2c11d20733b94e0c82c169b897
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| Please set your OpenAI API key | Popup → Settings → save `sk-...` key |
+| Invalid API key | Verify key and credits at [OpenAI](https://platform.openai.com/api-keys) |
+| Button not showing | Refresh LinkedIn; enable extension; open comment/reply box |
+| Weak post context | Refresh page; check console for `LCA:` logs |
+
+---
+
+## Cost
+
+You pay **OpenAI** directly. With **gpt-4o-mini** and short outputs, each generation is typically a fraction of a cent.
+
+---
+
+<div align="center">
+
+MIT License — free to use and modify.
+
+</div>
