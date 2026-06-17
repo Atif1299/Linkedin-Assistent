@@ -1,0 +1,233 @@
+/* LinkedIn Comment Assistant - Content Styles */
+
+/* Inline Wrapper */
+.lca-inline-wrapper {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* Inline Generate Button - Compact style */
+.lca-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #0a66c2 0%, #004182 100%);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  height: 28px;
+}
+
+.lca-inline-btn:hover {
+  background: linear-gradient(135deg, #004182 0%, #002d5c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.lca-inline-btn:active {
+  transform: translateY(0);
+}
+
+.lca-inline-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* Dropdown */
+.lca-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  min-width: 200px;
+  overflow: hidden;
+  animation: lcaFadeIn 0.15s ease;
+}
+
+@keyframes lcaFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lca-dropdown-header {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lca-tone-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Tone Buttons */
+.lca-tone-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: white;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+
+.lca-tone-btn:hover {
+  background: #f0f7ff;
+}
+
+.lca-tone-btn:active {
+  background: #e0efff;
+}
+
+.lca-tone-emoji {
+  font-size: 16px;
+}
+
+.lca-tone-name {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* Loading State */
+.lca-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border-radius: 16px;
+  font-size: 13px;
+  color: #666;
+}
+
+.lca-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ccc;
+  border-top-color: #0a66c2;
+  border-radius: 50%;
+  animation: lcaSpin 0.8s linear infinite;
+}
+
+@keyframes lcaSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Error State */
+.lca-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #fff0f0;
+  border: 1px solid #ffcdd2;
+  border-radius: 16px;
+  font-size: 12px;
+  color: #c62828;
+}
+
+.lca-error-text {
+  flex: 1;
+}
+
+.lca-error-close {
+  background: none;
+  border: none;
+  color: #c62828;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.lca-error-close:hover {
+  color: #8e0000;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .lca-dropdown {
+    background: #1d2226;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  
+  .lca-dropdown-header {
+    background: #38434f;
+    border-bottom-color: #38434f;
+    color: #b0b7bf;
+  }
+  
+  .lca-tone-btn {
+    background: #1d2226;
+  }
+  
+  .lca-tone-btn:hover {
+    background: #38434f;
+  }
+  
+  .lca-tone-name {
+    color: #ffffff;
+  }
+  
+  .lca-loading {
+    background: #38434f;
+    color: #b0b7bf;
+  }
+  
+  .lca-error {
+    background: #3d2426;
+    border-color: #5c2426;
+    color: #f4a4a6;
+  }
+}
+
+/* Scrollbar styling for tone list */
+.lca-tone-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lca-tone-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.lca-tone-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.lca-tone-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
